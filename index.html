@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Training Manager" />
+  <title>Training Manager</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="authView" class="auth-shell">
+    <section class="auth-card">
+      <div class="brand-row">
+        <div class="brand-mark">TM</div>
+        <div>
+          <h1>Training Manager</h1>
+          <p>体組成・トレーニング・食事・カロリー収支を一元管理</p>
+        </div>
+      </div>
+
+      <div id="supabaseAuth" class="hidden">
+        <div class="segmented" role="tablist">
+          <button id="loginTab" class="segmented-btn active" type="button">ログイン</button>
+          <button id="signupTab" class="segmented-btn" type="button">新規登録</button>
+        </div>
+        <form id="authForm" class="stack">
+          <label>メールアドレス<input id="emailInput" type="email" required autocomplete="email" /></label>
+          <label>パスワード<input id="passwordInput" type="password" required minlength="6" autocomplete="current-password" /></label>
+          <button id="authSubmit" class="primary-btn" type="submit">ログイン</button>
+        </form>
+        <p id="authMessage" class="helper" aria-live="polite"></p>
+      </div>
+
+      <div id="demoAuth" class="stack">
+        <div class="notice">
+          <strong>無料デモモード</strong>
+          <span>この端末内だけに保存します。夫婦共有・Apple Health同期・22時PushはSupabase接続後に有効になります。</span>
+        </div>
+        <label>利用者名<input id="demoName" type="text" value="慧" maxlength="30" /></label>
+        <button id="demoStart" class="primary-btn" type="button">この端末で始める</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="appView" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark small">TM</div>
+        <div><strong>Training Manager</strong><span id="accountBadge">Demo</span></div>
+      </div>
+      <nav id="nav" class="nav-list">
+        <button data-page="dashboard" class="nav-item active">ダッシュボード</button>
+        <button data-page="body" class="nav-item">体組成</button>
+        <button data-page="training" class="nav-item">トレーニング</button>
+        <button data-page="analysis" class="nav-item">分析・PR</button>
+        <button data-page="food" class="nav-item">食事</button>
+        <button data-page="health" class="nav-item">消費カロリー</button>
+        <button data-page="sharing" class="nav-item">夫婦共有</button>
+        <button data-page="settings" class="nav-item">設定</button>
+      </nav>
+      <button id="logoutBtn" class="ghost-btn sidebar-logout" type="button">ログアウト</button>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h2 id="pageTitle">ダッシュボード</h2>
+          <p id="welcomeText" class="muted"></p>
+        </div>
+        <div class="top-actions">
+          <button id="quickFood" class="ghost-btn" type="button">食事を登録</button>
+          <button id="quickBody" class="ghost-btn" type="button">体組成を登録</button>
+          <button id="quickTraining" class="primary-btn" type="button">トレーニングを登録</button>
+        </div>
+      </header>
+
+      <section id="page-dashboard" class="page active">
+        <div class="metric-grid six">
+          <article class="metric-card"><span>最新体重</span><strong id="metricWeight">--</strong><small>kg</small></article>
+          <article class="metric-card"><span>体脂肪率</span><strong id="metricFat">--</strong><small>%</small></article>
+          <article class="metric-card"><span>除脂肪体重</span><strong id="metricLean">--</strong><small>kg</small></article>
+          <article class="metric-card"><span>今日の摂取</span><strong id="metricKcal">0</strong><small>kcal</small></article>
+          <article class="metric-card"><span>今日の収支</span><strong id="metricDeficit">--</strong><small>kcal</small></article>
+          <article class="metric-card"><span>累積収支</span><strong id="metricCumulative">--</strong><small>kcal</small></article>
+        </div>
+
+        <div class="two-col">
+          <article class="panel">
+            <div class="panel-head"><div><h3>体重推移</h3><p>直近12回</p></div><span id="weightTrendLabel" class="pill">データなし</span></div>
+            <div class="chart-wrap"><canvas id="weightChart" aria-label="体重推移グラフ"></canvas></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>今日のPFC</h3><p id="goalText">目標を設定してください</p></div></div>
+            <div class="pfc-list">
+              <div><span>Protein</span><div class="bar"><i id="barP"></i></div><b id="pfcP">0g</b></div>
+              <div><span>Fat</span><div class="bar"><i id="barF"></i></div><b id="pfcF">0g</b></div>
+              <div><span>Carbs</span><div class="bar"><i id="barC"></i></div><b id="pfcC">0g</b></div>
+            </div>
+            <div class="balance-box" id="todayBalanceBox"></div>
+          </article>
+        </div>
+
+        <div class="three-col">
+          <article class="panel">
+            <div class="panel-head"><div><h3>次回メニュー提案</h3><p>直近実績からルールベースで提案</p></div></div>
+            <div id="suggestionsList" class="list-empty">記録がありません</div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>最近のトレーニング</h3><p>最新5件</p></div></div>
+            <div id="recentTraining" class="list-empty">記録がありません</div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>直近の体組成</h3><p>前回との差分</p></div></div>
+            <div id="recentBody" class="list-empty">記録がありません</div>
+          </article>
+        </div>
+      </section>
+
+      <section id="page-body" class="page">
+        <div class="two-col form-layout">
+          <article class="panel">
+            <div class="panel-head"><div><h3>体組成を登録</h3><p>ChatGPTで写真を読み取り、結果を貼り付けると自動入力します。</p></div></div>
+            <details class="import-box">
+              <summary>ChatGPTの読み取り結果を貼り付け</summary>
+              <textarea id="bodyImportText" rows="8" placeholder="例：\n測定日: 2026/09/15\n測定時刻: 07:10\n体重: 82.7kg\n体脂肪率: 21.9%\n筋肉量: 61.3kg\n除脂肪体重: 64.6kg\n基礎代謝: 1843kcal"></textarea>
+              <button id="parseBodyText" class="ghost-btn" type="button">内容を読み取って入力</button>
+              <p id="parseMessage" class="helper" aria-live="polite"></p>
+            </details>
+            <form id="bodyForm" class="form-grid">
+              <label>測定日<input id="bodyDate" type="date" required /></label>
+              <label>測定時刻<input id="bodyTime" type="time" /></label>
+              <label>体重 (kg)<input id="bodyWeight" type="number" step="0.1" min="20" max="400" required /></label>
+              <label>体脂肪率 (%)<input id="bodyFat" type="number" step="0.1" min="1" max="70" /></label>
+              <label>筋肉量 (kg)<input id="bodyMuscle" type="number" step="0.1" min="0" /></label>
+              <label>推定骨量 (kg)<input id="bodyBone" type="number" step="0.1" min="0" /></label>
+              <label>内臓脂肪レベル<input id="bodyVisceral" type="number" step="0.1" min="0" /></label>
+              <label>基礎代謝 (kcal)<input id="bodyBmr" type="number" step="1" min="0" /></label>
+              <label>体水分率 (%)<input id="bodyWater" type="number" step="0.1" min="0" max="100" /></label>
+              <label>体年齢<input id="bodyAge" type="number" step="1" min="0" max="120" /></label>
+              <label>脂肪量 (自動)<input id="bodyFatMass" type="number" step="0.1" readonly /></label>
+              <label>除脂肪体重<input id="bodyLean" type="number" step="0.1" /></label>
+              <label>BMI (自動)<input id="bodyBmi" type="number" step="0.1" readonly /></label>
+              <div class="form-actions"><button class="primary-btn" type="submit">体組成を保存</button></div>
+            </form>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>体組成履歴</h3><p>最新順</p></div></div>
+            <div class="table-scroll"><table><thead><tr><th>日付</th><th>体重</th><th>体脂肪</th><th>除脂肪</th><th>筋肉量</th><th></th></tr></thead><tbody id="bodyTable"></tbody></table></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="page-training" class="page">
+        <div class="section-switch-note inline-note">筋トレと有酸素運動を別々に記録します。Apple Healthから同期した有酸素は、種目・時間・消費カロリーを取り込み、傾斜は必要に応じて手入力できます。</div>
+        <div class="two-col form-layout">
+          <article class="panel">
+            <div class="panel-head"><div><h3>筋トレを登録</h3><p>総ボリューム・推定1RM・PRを自動判定します。</p></div></div>
+            <form id="trainingForm" class="form-grid">
+              <label>実施日<input id="trainingDate" type="date" required /></label>
+              <label>部位<select id="trainingPart"><option>胸</option><option>背中</option><option>脚</option><option>肩</option><option>腕</option><option>腹</option><option>全身</option></select></label>
+              <label class="wide">種目名<input id="trainingExercise" type="text" placeholder="例：ベンチプレス" required list="exerciseDatalist" /></label>
+              <datalist id="exerciseDatalist"></datalist>
+              <label>重量 (kg)<input id="trainingWeight" type="number" step="0.5" min="0" value="0" /></label>
+              <label>回数<input id="trainingReps" type="number" step="1" min="0" value="10" /></label>
+              <label>セット数<input id="trainingSets" type="number" step="1" min="1" value="3" /></label>
+              <label>RPE<input id="trainingRpe" type="number" step="0.5" min="1" max="10" placeholder="例：8" /></label>
+              <label>推定1RM<input id="training1rm" type="number" step="0.1" readonly /></label>
+              <label class="wide">メモ<textarea id="trainingNote" rows="3" placeholder="フォームや体調など"></textarea></label>
+              <div id="trainingSuggestionPreview" class="inline-note wide"></div>
+              <div class="form-actions"><button class="primary-btn" type="submit">筋トレを保存</button></div>
+            </form>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>有酸素運動を登録</h3><p>種目・傾斜・時間・消費カロリーを独立管理します。</p></div></div>
+            <form id="cardioForm" class="form-grid">
+              <label>実施日<input id="cardioDate" type="date" required /></label>
+              <label>種目<select id="cardioExercise"><option>トレッドミル</option><option>ウォーキング</option><option>ランニング</option><option>自転車</option><option>エリプティカル</option><option>ステアクライマー</option><option>その他</option></select></label>
+              <label>傾斜 (%)<input id="cardioIncline" type="number" step="0.1" min="0" max="40" placeholder="例：10" /></label>
+              <label>時間 (分)<input id="cardioDuration" type="number" step="1" min="1" required placeholder="例：60" /></label>
+              <label>消費カロリー (kcal)<input id="cardioCalories" type="number" step="1" min="0" required placeholder="例：500" /></label>
+              <label class="wide">メモ<textarea id="cardioNote" rows="3" placeholder="速度などを残したい場合はこちら"></textarea></label>
+              <div class="inline-note wide">Apple Health同期時は、取得できたワークアウトの種目・時間・消費カロリーを自動登録します。傾斜はHealthKitの標準ワークアウト項目ではないため、基本的に手入力です。</div>
+              <div class="form-actions"><button class="primary-btn" type="submit">有酸素を保存</button></div>
+            </form>
+          </article>
+        </div>
+        <div class="two-col">
+          <article class="panel">
+            <div class="panel-head"><div><h3>筋トレ履歴</h3><p>PRは自動判定</p></div></div>
+            <div class="table-scroll"><table><thead><tr><th>日付</th><th>部位</th><th>種目</th><th>内容</th><th>1RM</th><th>Volume</th><th></th></tr></thead><tbody id="trainingTable"></tbody></table></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>有酸素履歴</h3><p>Apple Health同期分もここに表示</p></div></div>
+            <div class="table-scroll"><table><thead><tr><th>日付</th><th>種目</th><th>傾斜</th><th>時間</th><th>消費</th><th>入力元</th><th></th></tr></thead><tbody id="cardioTable"></tbody></table></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="page-analysis" class="page">
+        <div class="metric-grid">
+          <article class="metric-card"><span>週間ボリューム</span><strong id="weekVolume">0</strong><small>kg</small></article>
+          <article class="metric-card"><span>月間ボリューム</span><strong id="monthVolume">0</strong><small>kg</small></article>
+          <article class="metric-card"><span>登録種目</span><strong id="exerciseCount">0</strong><small>種目</small></article>
+          <article class="metric-card"><span>PR更新</span><strong id="prCount">0</strong><small>回</small></article>
+        </div>
+        <div class="two-col">
+          <article class="panel">
+            <div class="panel-head"><div><h3>種目別長期グラフ</h3><p>重量・推定1RM・ボリュームを確認</p></div></div>
+            <div class="chart-controls">
+              <select id="analysisExercise"></select>
+              <select id="analysisMetric"><option value="oneRm">推定1RM</option><option value="weight">重量</option><option value="volume">総ボリューム</option></select>
+              <select id="analysisRange"><option value="all">全期間</option><option value="180">180日</option><option value="90">90日</option><option value="30">30日</option></select>
+            </div>
+            <div class="chart-wrap tall"><canvas id="exerciseChart"></canvas></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>自己ベスト</h3><p>実重量・推定1RM・重量×回数</p></div></div>
+            <div id="prList" class="list-empty">記録がありません</div>
+          </article>
+        </div>
+        <div class="two-col">
+          <article class="panel">
+            <div class="panel-head"><div><h3>週間・月間ボリューム</h3><p>部位別集計</p></div></div>
+            <div class="chart-wrap"><canvas id="volumeChart"></canvas></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>1RM更新履歴</h3><p>自己ベストを更新した記録</p></div></div>
+            <div id="prHistory" class="list-empty">記録がありません</div>
+          </article>
+        </div>
+        <article class="panel">
+          <div class="panel-head"><div><h3>体重 × 摂取カロリー</h3><p>同日に両方の記録がある日を使用。相関は因果関係を意味しません。</p></div><span id="correlationLabel" class="pill">データ不足</span></div>
+          <div class="chart-wrap tall"><canvas id="correlationChart"></canvas></div>
+        </article>
+      </section>
+
+      <section id="page-food" class="page">
+        <div class="two-col form-layout">
+          <article class="panel">
+            <div class="panel-head"><div><h3>食事を登録</h3><p>商品名・バーコード・手入力に対応。</p></div></div>
+            <div class="search-row">
+              <input id="foodSearchInput" type="search" placeholder="例：オイコス プレーン" />
+              <button id="foodSearchBtn" class="ghost-btn" type="button">商品検索</button>
+            </div>
+            <div class="barcode-row">
+              <input id="barcodeInput" inputmode="numeric" type="text" placeholder="JAN/EANコード" />
+              <button id="barcodeLookupBtn" class="ghost-btn" type="button">コード検索</button>
+              <button id="scanBarcodeBtn" class="ghost-btn" type="button">カメラで読む</button>
+            </div>
+            <div id="barcodePanel" class="barcode-panel hidden">
+              <div id="barcodeReader"></div>
+              <button id="stopBarcodeBtn" class="danger-btn" type="button">カメラを停止</button>
+            </div>
+            <div id="foodSearchStatus" class="helper"></div>
+            <div id="foodSearchResults" class="search-results"></div>
+
+            <form id="foodForm" class="form-grid">
+              <label>日付<input id="foodDate" type="date" required /></label>
+              <label>食事<select id="mealType"><option>朝食</option><option>昼食</option><option>夕食</option><option>間食</option><option>トレーニング前後</option></select></label>
+              <label class="wide">食品・商品名<input id="foodName" type="text" required /></label>
+              <label>摂取量 (g)<input id="foodAmount" type="number" step="1" min="1" value="100" /></label>
+              <label>kcal<input id="foodKcal" type="number" step="0.1" min="0" required /></label>
+              <label>たんぱく質 (g)<input id="foodProtein" type="number" step="0.1" min="0" /></label>
+              <label>脂質 (g)<input id="foodFat" type="number" step="0.1" min="0" /></label>
+              <label>炭水化物 (g)<input id="foodCarbs" type="number" step="0.1" min="0" /></label>
+              <label class="wide">メモ<input id="foodNote" type="text" /></label>
+              <div class="form-actions"><button class="primary-btn" type="submit">食事を保存</button></div>
+            </form>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>今日の食事</h3><p id="todayFoodSummary">0 kcal</p></div></div>
+            <div class="table-scroll"><table><thead><tr><th>食事</th><th>内容</th><th>kcal</th><th>P</th><th>F</th><th>C</th><th></th></tr></thead><tbody id="foodTable"></tbody></table></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="page-health" class="page">
+        <div class="two-col form-layout">
+          <article class="panel">
+            <div class="panel-head"><div><h3>消費カロリーを登録</h3><p>Apple Health連携前でも手入力できます。</p></div></div>
+            <form id="healthForm" class="form-grid">
+              <label>日付<input id="healthDate" type="date" required /></label>
+              <label>歩数<input id="healthSteps" type="number" step="1" min="0" /></label>
+              <label>安静時消費 (kcal)<input id="healthResting" type="number" step="1" min="0" /></label>
+              <label>アクティブ消費 (kcal)<input id="healthActive" type="number" step="1" min="0" /></label>
+              <label>合計消費 (自動)<input id="healthTotal" type="number" step="1" readonly /></label>
+              <div class="form-actions"><button class="primary-btn" type="submit">消費データを保存</button></div>
+            </form>
+            <div class="notice apple-health-box">
+              <strong>Apple Health無料連携</strong>
+              <span>iPhoneショートカットから「歩数・安静時消費エネルギー・アクティブエネルギー」をSupabase Edge Functionへ送信します。連携キーは設定画面で確認できます。</span>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>カロリー収支</h3><p>消費 − 摂取。プラスがアンダーカロリー。</p></div></div>
+            <div id="balanceSummary" class="summary-stack"></div>
+            <div class="table-scroll"><table><thead><tr><th>日付</th><th>摂取</th><th>消費</th><th>アンダー</th><th>累積</th><th></th></tr></thead><tbody id="healthTable"></tbody></table></div>
+          </article>
+        </div>
+        <article class="panel">
+          <div class="panel-head"><div><h3>累積カロリー差</h3><p>測定開始日からの日別収支を累積</p></div></div>
+          <div class="chart-wrap tall"><canvas id="balanceChart"></canvas></div>
+        </article>
+      </section>
+
+      <section id="page-sharing" class="page">
+        <div class="two-col form-layout">
+          <article class="panel">
+            <div class="panel-head"><div><h3>夫婦アカウント連携</h3><p>Supabase接続時に利用できます。</p></div></div>
+            <div id="sharingCloudOnly" class="notice hidden"><strong>クラウド接続が必要です</strong><span>デモモードでは夫婦共有は利用できません。</span></div>
+            <div id="sharingControls" class="stack">
+              <label>あなたの共有コード<input id="myShareCode" type="text" readonly /></label>
+              <div class="search-row"><input id="partnerShareCode" type="text" placeholder="相手の共有コードを入力" /><button id="connectPartnerBtn" class="primary-btn" type="button">連携する</button></div>
+              <div id="partnerStatus" class="notice"><strong>未連携</strong><span>相手の共有コードで連携します。</span></div>
+              <fieldset class="share-permissions">
+                <legend>相手に共有する内容</legend>
+                <label><input id="shareBody" type="checkbox" /> 体組成</label>
+                <label><input id="shareTraining" type="checkbox" /> トレーニング</label>
+                <label><input id="shareFood" type="checkbox" /> 食事</label>
+                <label><input id="shareHealth" type="checkbox" /> カロリー収支</label>
+              </fieldset>
+              <button id="saveSharingBtn" class="ghost-btn" type="button">共有設定を保存</button>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>パートナーの共有データ</h3><p>相手が共有を許可した項目だけ表示</p></div></div>
+            <div id="partnerOverview" class="list-empty">連携後に表示されます</div>
+          </article>
+        </div>
+      </section>
+
+      <section id="page-settings" class="page">
+        <div class="two-col form-layout">
+          <article class="panel">
+            <div class="panel-head"><div><h3>プロフィール・目標</h3><p>各アカウントごとに保持します。</p></div></div>
+            <form id="settingsForm" class="form-grid">
+              <label>表示名<input id="profileName" type="text" maxlength="30" /></label>
+              <label>身長 (cm)<input id="profileHeight" type="number" step="0.1" min="100" max="250" /></label>
+              <label>目標体重 (kg)<input id="goalWeight" type="number" step="0.1" min="20" max="400" /></label>
+              <label>目標カロリー<input id="goalKcal" type="number" step="1" min="0" /></label>
+              <label>目標P (g)<input id="goalP" type="number" step="1" min="0" /></label>
+              <label>目標F (g)<input id="goalF" type="number" step="1" min="0" /></label>
+              <label>目標C (g)<input id="goalC" type="number" step="1" min="0" /></label>
+              <label>測定開始日<input id="trackingStartDate" type="date" /></label>
+              <label>Health未連携時の推定消費 (kcal)<input id="fallbackExpenditure" type="number" step="1" min="0" /></label>
+              <div class="form-actions"><button class="primary-btn" type="submit">設定を保存</button></div>
+            </form>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>通知・連携</h3><p>クラウド運用時に有効</p></div></div>
+            <div class="stack">
+              <div class="notice"><strong>22時カロリー収支通知</strong><span>Supabase Cronが1時間ごとに確認し、ユーザーのタイムゾーンで22時になった時だけWeb Pushを送ります。</span></div>
+              <label class="switch-row"><input id="notificationsEnabled" type="checkbox" /> 22時通知を有効にする</label>
+              <button id="enablePushBtn" class="ghost-btn" type="button">この端末でPush通知を有効化</button>
+              <p id="pushStatus" class="helper"></p>
+              <label>Apple Health連携キー<input id="shortcutKey" type="text" readonly /></label>
+              <p class="helper">このキーをiPhoneショートカットの送信JSONに設定します。第三者に共有しないでください。</p>
+            </div>
+          </article>
+        </div>
+        <div class="two-col form-layout">
+          <article class="panel">
+            <div class="panel-head"><div><h3>データ管理</h3><p>AI API課金は利用しません。</p></div></div>
+            <div class="stack">
+              <div class="notice"><strong>体組成写真</strong><span>ChatGPTへ写真 → 読み取り結果をコピー → 体組成画面へ貼り付け → 保存。</span></div>
+              <button id="exportBtn" class="ghost-btn" type="button">データをJSONでエクスポート</button>
+              <button id="clearDemoBtn" class="danger-btn hidden" type="button">この端末のデモデータを削除</button>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>無料構成の状態</h3><p>必要な外部サービス</p></div></div>
+            <div id="systemStatus" class="summary-stack"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="./config.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
