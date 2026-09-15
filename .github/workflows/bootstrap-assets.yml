@@ -1,0 +1,33 @@
+name: Bootstrap Training Manager assets
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bootstrap-assets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch existing production assets
+        run: |
+          set -e
+          BASE="https://training-manager-vercel.vercel.app"
+          curl -fL "$BASE/" -o index.html
+          curl -fL "$BASE/app.js" -o app.js
+          curl -fL "$BASE/icon-192.png" -o icon-192.png
+          curl -fL "$BASE/icon-512.png" -o icon-512.png
+      - name: Commit assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html app.js icon-192.png icon-512.png
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Bootstrap production assets"
+          git push
