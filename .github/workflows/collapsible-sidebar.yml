@@ -1,0 +1,127 @@
+name: Enable collapsible left sidebar
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/collapsible-sidebar.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch collapsible sidebar
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          css = Path('styles.css')
+          s = css.read_text()
+          marker = '/* Collapsible left navigation */'
+          if marker not in s:
+              s += r'''
+
+/* Collapsible left navigation */
+.app-shell{display:block;min-height:100vh}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:230px;height:100dvh;z-index:300;transition:transform .22s ease;box-shadow:4px 0 18px rgba(15,23,42,.08)}
+.main{margin-left:230px;transition:margin-left .22s ease;padding-top:72px}
+.app-shell:not(.sidebar-open) .sidebar{transform:translateX(-100%)}
+.app-shell:not(.sidebar-open) .main{margin-left:0}
+.sidebar-menu-toggle{position:fixed;z-index:360;top:14px;left:242px;width:44px;height:44px;border:1px solid #d1d5db;border-radius:10px;background:#fff;color:#111827;font-size:21px;line-height:1;display:grid;place-items:center;box-shadow:0 3px 12px rgba(15,23,42,.12);transition:left .22s ease}
+.app-shell:not(.sidebar-open) .sidebar-menu-toggle{left:12px}
+.app-shell:not(.sidebar-open) .topbar{padding-left:48px}
+.sidebar-overlay{display:none}
+@media(max-width:980px){
+  .app-shell{display:block}
+  .sidebar{position:fixed!important;top:0!important;left:0!important;bottom:0!important;width:min(82vw,280px)!important;height:100dvh!important;padding:calc(18px + env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom))!important;display:flex!important;z-index:340!important;transform:translateX(-100%);overflow-y:auto;border:0!important}
+  .app-shell.sidebar-open .sidebar{transform:translateX(0)}
+  .sidebar-brand{display:flex!important}
+  .nav-list{display:grid!important;grid-template-columns:1fr!important;gap:5px!important;overflow:visible!important}
+  .nav-item{min-height:46px!important;padding:11px 12px!important;text-align:left!important;white-space:normal!important;font-size:14px!important}
+  .sidebar-logout{display:block!important;margin-top:auto!important}
+  .main,.app-shell.sidebar-open .main{margin-left:0!important;padding-top:72px}
+  .sidebar-menu-toggle,.app-shell.sidebar-open .sidebar-menu-toggle{left:12px;top:calc(12px + env(safe-area-inset-top));z-index:370}
+  .topbar,.app-shell.sidebar-open .topbar,.app-shell:not(.sidebar-open) .topbar{padding-left:48px}
+  .sidebar-overlay{display:block;position:fixed;inset:0;background:rgba(15,23,42,.42);z-index:330;opacity:0;pointer-events:none;transition:opacity .2s ease}
+  .app-shell.sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
+}
+'''
+              css.write_text(s)
+
+          js = Path('health-display.js')
+          j = js.read_text()
+          js_marker = 'collapsible-left-navigation'
+          if js_marker not in j:
+              j += r'''
+
+/* collapsible-left-navigation */
+(() => {
+  'use strict';
+  function initSidebar(){
+    const app=document.getElementById('appView');
+    const sidebar=app?.querySelector('.sidebar');
+    if(!app||!sidebar||document.getElementById('sidebarMenuToggle'))return;
+    const toggle=document.createElement('button');
+    toggle.id='sidebarMenuToggle';
+    toggle.className='sidebar-menu-toggle';
+    toggle.type='button';
+    toggle.setAttribute('aria-label','メニューを開閉');
+    toggle.setAttribute('aria-controls','nav');
+    toggle.textContent='☰';
+    const overlay=document.createElement('div');
+    overlay.className='sidebar-overlay';
+    overlay.setAttribute('aria-hidden','true');
+    app.appendChild(toggle);
+    app.appendChild(overlay);
+
+    const mobile=()=>window.matchMedia('(max-width:980px)').matches;
+    const setOpen=(open,remember=true)=>{
+      app.classList.toggle('sidebar-open',open);
+      toggle.setAttribute('aria-expanded',String(open));
+      toggle.textContent=open?'×':'☰';
+      if(remember&&!mobile())localStorage.setItem('tm-sidebar-open',open?'1':'0');
+    };
+    const saved=localStorage.getItem('tm-sidebar-open');
+    setOpen(mobile()?false:saved!=='0',false);
+    toggle.addEventListener('click',()=>setOpen(!app.classList.contains('sidebar-open')));
+    overlay.addEventListener('click',()=>setOpen(false,false));
+    sidebar.addEventListener('click',e=>{
+      if(mobile()&&e.target.closest('[data-page]'))setOpen(false,false);
+    });
+    let wasMobile=mobile();
+    window.addEventListener('resize',()=>{
+      const nowMobile=mobile();
+      if(nowMobile!==wasMobile){
+        wasMobile=nowMobile;
+        const stored=localStorage.getItem('tm-sidebar-open');
+        setOpen(nowMobile?false:stored!=='0',false);
+      }
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(initSidebar,0));
+  else setTimeout(initSidebar,0);
+})();
+'''
+              js.write_text(j)
+
+          sw = Path('sw.js')
+          w = sw.read_text()
+          m = re.search(r"const CACHE='training-manager-v(\d+)';", w)
+          if m:
+              w = w[:m.start()] + f"const CACHE='training-manager-v{int(m.group(1))+1}';" + w[m.end():]
+              sw.write_text(w)
+          PY
+      - name: Validate JavaScript
+        run: node --check health-display.js
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add styles.css health-display.js sw.js
+          git commit -m "Move navigation into collapsible left sidebar"
+          git push
