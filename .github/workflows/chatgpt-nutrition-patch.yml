@@ -1,0 +1,41 @@
+name: Enable ChatGPT nutrition helper
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/chatgpt-nutrition-patch.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add helper to app
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          tag='  <script src="./chatgpt-nutrition.js"></script>\n'
+          if tag not in s:
+              s=s.replace('</body>', tag+'</body>')
+          p.write_text(s)
+          sw=Path('sw.js')
+          t=sw.read_text()
+          import re
+          t=re.sub(r"const CACHE='training-manager-v\\d+';", "const CACHE='training-manager-v6';", t)
+          if "'./chatgpt-nutrition.js'" not in t:
+              t=t.replace("'./manifest.webmanifest'", "'./manifest.webmanifest','./chatgpt-nutrition.js'")
+          sw.write_text(t)
+          PY
+      - name: Validate JavaScript
+        run: node --check chatgpt-nutrition.js
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html sw.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Enable ChatGPT nutrition paste helper"
+          git push
