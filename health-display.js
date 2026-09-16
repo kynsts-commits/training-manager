@@ -94,3 +94,62 @@
   });
   setTimeout(renderAppleHealth, 900);
 })();
+
+/* collapsible-left-navigation */
+(() => {
+  'use strict';
+  function initSidebar(){
+    const app=document.getElementById('appView');
+    const sidebar=app?.querySelector('.sidebar');
+    if(!app||!sidebar||document.getElementById('sidebarMenuToggle'))return;
+
+    if(!document.querySelector('link[data-sidebar-css]')){
+      const link=document.createElement('link');
+      link.rel='stylesheet';
+      link.href='./sidebar.css';
+      link.dataset.sidebarCss='1';
+      document.head.appendChild(link);
+    }
+
+    const toggle=document.createElement('button');
+    toggle.id='sidebarMenuToggle';
+    toggle.className='sidebar-menu-toggle';
+    toggle.type='button';
+    toggle.setAttribute('aria-label','メニューを開閉');
+    toggle.setAttribute('aria-controls','nav');
+
+    const overlay=document.createElement('div');
+    overlay.className='sidebar-overlay';
+    overlay.setAttribute('aria-hidden','true');
+    app.appendChild(toggle);
+    app.appendChild(overlay);
+
+    const mobile=()=>window.matchMedia('(max-width:980px)').matches;
+    const setOpen=(open,remember=true)=>{
+      app.classList.toggle('sidebar-open',open);
+      toggle.setAttribute('aria-expanded',String(open));
+      toggle.textContent=open?'×':'☰';
+      if(remember&&!mobile())localStorage.setItem('tm-sidebar-open',open?'1':'0');
+    };
+
+    const saved=localStorage.getItem('tm-sidebar-open');
+    setOpen(mobile()?false:saved!=='0',false);
+    toggle.addEventListener('click',()=>setOpen(!app.classList.contains('sidebar-open')));
+    overlay.addEventListener('click',()=>setOpen(false,false));
+    sidebar.addEventListener('click',e=>{
+      if(mobile()&&e.target.closest('[data-page]'))setOpen(false,false);
+    });
+
+    let wasMobile=mobile();
+    window.addEventListener('resize',()=>{
+      const nowMobile=mobile();
+      if(nowMobile!==wasMobile){
+        wasMobile=nowMobile;
+        const stored=localStorage.getItem('tm-sidebar-open');
+        setOpen(nowMobile?false:stored!=='0',false);
+      }
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(initSidebar,0));
+  else setTimeout(initSidebar,0);
+})();
