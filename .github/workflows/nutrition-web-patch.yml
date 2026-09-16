@@ -1,0 +1,53 @@
+name: Deploy free web nutrition lookup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nutrition-web-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch production assets
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          index = Path('index.html')
+          html = index.read_text()
+          tag = '<script src="./nutrition-web.js"></script>'
+          if tag not in html:
+              html = html.replace('<script src="./app.js"></script>', '<script src="./app.js"></script>\n  ' + tag)
+          index.write_text(html)
+
+          css = Path('styles.css')
+          styles = css.read_text()
+          marker = '/* Free web nutrition lookup */'
+          if marker not in styles:
+              styles += '''\n/* Free web nutrition lookup */\n.nutrition-web-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}.nutrition-web-actions .helper{flex:1;min-width:180px}.nutrition-web-card{align-items:start}.nutrition-source-link{display:inline-block;margin-top:6px;font-size:12px;color:var(--accent);text-decoration:none}.nutrition-source-link:hover{text-decoration:underline}.notice .nutrition-source-link{margin-top:8px;text-align:center}.nutrition-web-card small{line-height:1.6}@media(max-width:700px){.nutrition-web-actions{display:grid;grid-template-columns:1fr}.nutrition-web-actions button{width:100%}.nutrition-web-card{grid-template-columns:1fr}.nutrition-web-card button{width:100%}}\n'''
+          css.write_text(styles)
+
+          sw = Path('sw.js')
+          s = sw.read_text()
+          s = re.sub(r"const CACHE='training-manager-v\\d+';", "const CACHE='training-manager-v6';", s, count=1)
+          if "'./nutrition-web.js'" not in s:
+              s = s.replace("'./app.js'", "'./app.js','./nutrition-web.js'")
+          sw.write_text(s)
+          PY
+      - name: Validate JavaScript
+        run: node --check nutrition-web.js
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html styles.css sw.js nutrition-web.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Enable free web nutrition lookup"
+          git push
