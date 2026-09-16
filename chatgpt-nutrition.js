@@ -2,6 +2,81 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const val = id => $(id)?.value.trim() || '';
+  const round1 = n => Math.round((Number(n) || 0) * 10) / 10;
+  let cgBase = null;
+
+  function gramsOf(text) {
+    const m = String(text || '').replace(/,/g, '').match(/(\d+(?:\.\d+)?)\s*g/i);
+    return m ? Number(m[1]) : 0;
+  }
+
+  function nutritionValues(prefix = 'cg') {
+    const ids = prefix === 'cg'
+      ? ['cgKcal','cgProtein','cgFat','cgCarbs']
+      : ['foodKcal','foodProtein','foodFat','foodCarbs'];
+    return ids.map(id => Number($(id)?.value) || 0);
+  }
+
+  function setFoodBaseline(amount, values) {
+    const input = $('foodAmount');
+    const base = Number(amount);
+    if (!input || !(base > 0)) return;
+    input.dataset.nutritionBaseAmount = String(base);
+    input.dataset.nutritionBaseKcal = String(Number(values[0]) || 0);
+    input.dataset.nutritionBaseProtein = String(Number(values[1]) || 0);
+    input.dataset.nutritionBaseFat = String(Number(values[2]) || 0);
+    input.dataset.nutritionBaseCarbs = String(Number(values[3]) || 0);
+  }
+
+  function clearFoodBaseline() {
+    const input = $('foodAmount');
+    if (!input) return;
+    ['nutritionBaseAmount','nutritionBaseKcal','nutritionBaseProtein','nutritionBaseFat','nutritionBaseCarbs'].forEach(k => delete input.dataset[k]);
+  }
+
+  function captureCurrentFoodBaseline() {
+    const amount = Number($('foodAmount')?.value) || 0;
+    if (amount > 0) setFoodBaseline(amount, nutritionValues('food'));
+  }
+
+  function recalcFoodNutrition() {
+    const input = $('foodAmount');
+    if (!input) return;
+    const baseAmount = Number(input.dataset.nutritionBaseAmount) || 0;
+    const amount = Number(input.value) || 0;
+    if (!(baseAmount > 0) || !(amount > 0)) return;
+    const ratio = amount / baseAmount;
+    const values = [
+      Number(input.dataset.nutritionBaseKcal) || 0,
+      Number(input.dataset.nutritionBaseProtein) || 0,
+      Number(input.dataset.nutritionBaseFat) || 0,
+      Number(input.dataset.nutritionBaseCarbs) || 0
+    ];
+    ['foodKcal','foodProtein','foodFat','foodCarbs'].forEach((id, i) => {
+      if ($(id)) $(id).value = round1(values[i] * ratio);
+    });
+  }
+
+  function rememberCgBase() {
+    const grams = gramsOf(val('cgBasis'));
+    if (!(grams > 0)) {
+      cgBase = null;
+      return;
+    }
+    cgBase = { grams, values: nutritionValues('cg') };
+  }
+
+  function recalcCgNutrition() {
+    if (!cgBase) return;
+    const grams = gramsOf(val('cgBasis'));
+    if (!(grams > 0)) return;
+    const ratio = grams / cgBase.grams;
+    ['cgKcal','cgProtein','cgFat','cgCarbs'].forEach((id, i) => {
+      if ($(id)) $(id).value = round1(cgBase.values[i] * ratio);
+    });
+    const status = $('chatgptNutritionStatus');
+    if (status) status.textContent = `${cgBase.grams}g基準から${grams}gへ換算しました。`;
+  }
 
   function mount() {
     const anchor = $('foodSearchResults');
@@ -23,7 +98,7 @@
         <p id="chatgptNutritionStatus" class="helper"></p>
         <div class="form-grid" style="margin-top:10px">
           <label class="wide">商品名<input id="cgName" type="text"></label>
-          <label>基準量<input id="cgBasis" type="text" placeholder="例：1個 113g"></label>
+          <label>基準量（変更で自動計算）<input id="cgBasis" type="text" placeholder="例：1個 113g"></label>
           <label>カロリー (kcal)<input id="cgKcal" type="number" step="0.1" min="0"></label>
           <label>たんぱく質 P (g)<input id="cgProtein" type="number" step="0.1" min="0"></label>
           <label>脂質 F (g)<input id="cgFat" type="number" step="0.1" min="0"></label>
@@ -37,6 +112,16 @@
     $('openChatGptNutrition').addEventListener('click', openChatGPT);
     $('parseChatgptNutrition').addEventListener('click', parsePaste);
     $('applyChatgptNutrition').addEventListener('click', apply);
+    $('cgBasis').addEventListener('input', recalcCgNutrition);
+
+    const amount = $('foodAmount');
+    if (amount) amount.addEventListener('input', recalcFoodNutrition);
+
+    ['foodKcal','foodProtein','foodFat','foodCarbs'].forEach(id => {
+      $(id)?.addEventListener('change', captureCurrentFoodBaseline);
+    });
+
+    $('foodForm')?.addEventListener('submit', () => setTimeout(clearFoodBaseline, 0));
   }
 
   function openChatGPT() {
@@ -70,7 +155,10 @@
     set('cgFat', numberOf(pick([/^F\s*[:：]/i, /^脂質\s*[:：]/i])));
     set('cgCarbs', numberOf(pick([/^C\s*[:：]/i, /^炭水化物\s*[:：]/i])));
     set('cgSource', pick([/^出典URL\s*[:：]/i, /^URL\s*[:：]/i, /^出典\s*[:：]/i]).match(/https?:\/\/\S+/)?.[0] || '');
-    $('chatgptNutritionStatus').textContent = '項目ごとに分けました。内容を確認して「食事入力欄に反映」を押してください。';
+    rememberCgBase();
+    $('chatgptNutritionStatus').textContent = cgBase
+      ? `項目ごとに分けました。基準量${cgBase.grams}gを変更すると、kcal・P・F・Cを自動換算します。`
+      : '項目ごとに分けました。内容を確認して「食事入力欄に反映」を押してください。';
   }
 
   function apply() {
@@ -81,13 +169,20 @@
     set('foodFat', val('cgFat'));
     set('foodCarbs', val('cgCarbs'));
     const basis = val('cgBasis');
-    const grams = basis.match(/(\d+(?:\.\d+)?)\s*g/i);
-    if (grams) set('foodAmount', grams[1]);
+    const grams = gramsOf(basis);
+    if (grams) set('foodAmount', String(grams));
     const source = val('cgSource');
     if ($('foodNote')) $('foodNote').value = ['ChatGPT Web検索', basis, source].filter(Boolean).join(' / ');
-    $('chatgptNutritionStatus').textContent = '食事入力欄に反映しました。商品・基準量・栄養成分を確認して保存してください。';
+    setFoodBaseline(Number($('foodAmount')?.value) || grams || 100, nutritionValues('food'));
+    $('chatgptNutritionStatus').textContent = '食事入力欄に反映しました。下の摂取量を変更しても栄養素が自動計算されます。';
     $('foodName')?.scrollIntoView({behavior:'smooth', block:'center'});
   }
+
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-product],[data-web-nutrition],[data-copy-food]')) {
+      setTimeout(captureCurrentFoodBaseline, 80);
+    }
+  });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
   else mount();
