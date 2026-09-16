@@ -259,6 +259,16 @@
             <div id="foodSearchStatus" class="helper"></div>
             <div id="foodSearchResults" class="search-results"></div>
 
+            <div class="notice" id="pastFoodCopyPanel">
+              <strong>過去の食事から複製</strong>
+              <span>日付を選んで、1品だけ入力欄へコピーするか、その日の食事をまとめて今日へ複製できます。</span>
+              <div class="search-row" style="margin-top:10px">
+                <select id="pastFoodDate"></select>
+                <button id="copyPastDayBtn" class="ghost-btn" type="button">この日の食事を今日に複製</button>
+              </div>
+              <div id="pastFoodList" class="search-results"></div>
+            </div>
+
             <form id="foodForm" class="form-grid">
               <label>日付<input id="foodDate" type="date" required /></label>
               <label>食事<select id="mealType"><option>朝食</option><option>昼食</option><option>夕食</option><option>間食</option><option>トレーニング前後</option></select></label>

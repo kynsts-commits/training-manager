@@ -277,7 +277,53 @@
   function renderBodyTable(){const rows=[...mine(state.body)].sort((a,b)=>(b.date||'').localeCompare(a.date||''));$('bodyTable').innerHTML=rows.length?rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${fmt(r.weight)}kg</td><td>${fmt(r.fat)}%</td><td>${fmt(r.lean)}kg</td><td>${fmt(r.muscle)}kg</td><td><button class="row-delete" data-del-type="body" data-id="${r.id}">削除</button></td></tr>`).join(''):`<tr><td colspan="6" class="muted">まだ記録がありません</td></tr>`;}
   function renderTrainingTable(){const rows=[...mine(state.training)].sort((a,b)=>(b.date||'').localeCompare(a.date||''));const prs=currentPrIds();$('trainingTable').innerHTML=rows.length?rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.part)}</td><td>${esc(r.exercise)}${prs.has(String(r.id))?' <span class="pr-badge">PR</span>':''}</td><td>${fmt(r.weight)}kg × ${r.reps} × ${r.sets}${r.rpe?` / RPE${fmt(r.rpe)}`:''}</td><td>${fmt(r.oneRm)}kg</td><td>${Math.round(num(r.volume)).toLocaleString()}kg</td><td><button class="row-delete" data-del-type="training" data-id="${r.id}">削除</button></td></tr>`).join(''):`<tr><td colspan="7" class="muted">まだ記録がありません</td></tr>`;}
   function renderCardioTable(){const rows=[...mine(state.cardio)].sort((a,b)=>(b.date||'').localeCompare(a.date||''));$('cardioTable').innerHTML=rows.length?rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.exercise)}</td><td>${r.incline!==null&&r.incline!==undefined&&r.incline!==''?`${fmt(r.incline)}%`:'--'}</td><td>${Math.round(num(r.duration))}分</td><td>${Math.round(num(r.calories))}kcal</td><td>${r.source==='apple_health_shortcut'?'Apple Health':'手入力'}</td><td><button class="row-delete" data-del-type="cardio" data-id="${r.id}">削除</button></td></tr>`).join(''):`<tr><td colspan="7" class="muted">まだ記録がありません</td></tr>`;}
-  function renderFoodTable(){const rows=[...mine(state.food)].filter(r=>r.date===today()).sort((a,b)=>String(a.meal).localeCompare(String(b.meal),'ja'));const sum=rows.reduce((a,x)=>({k:a.k+num(x.kcal),p:a.p+num(x.protein),f:a.f+num(x.fat),c:a.c+num(x.carbs)}),{k:0,p:0,f:0,c:0});$('todayFoodSummary').textContent=`${Math.round(sum.k)} kcal / P${round1(sum.p)} F${round1(sum.f)} C${round1(sum.c)}`;$('foodTable').innerHTML=rows.length?rows.map(r=>`<tr><td>${esc(r.meal)}</td><td>${esc(r.name)}</td><td>${Math.round(num(r.kcal))}</td><td>${fmt(r.protein)}</td><td>${fmt(r.fat)}</td><td>${fmt(r.carbs)}</td><td><button class="row-delete" data-del-type="food" data-id="${r.id}">削除</button></td></tr>`).join(''):`<tr><td colspan="7" class="muted">今日の記録はありません</td></tr>`;}
+  function renderFoodTable(){const rows=[...mine(state.food)].filter(r=>r.date===today()).sort((a,b)=>String(a.meal).localeCompare(String(b.meal),'ja'));const sum=rows.reduce((a,x)=>({k:a.k+num(x.kcal),p:a.p+num(x.protein),f:a.f+num(x.fat),c:a.c+num(x.carbs)}),{k:0,p:0,f:0,c:0});$('todayFoodSummary').textContent=`${Math.round(sum.k)} kcal / P${round1(sum.p)} F${round1(sum.f)} C${round1(sum.c)}`;$('foodTable').innerHTML=rows.length?rows.map(r=>`<tr><td>${esc(r.meal)}</td><td>${esc(r.name)}</td><td>${Math.round(num(r.kcal))}</td><td>${fmt(r.protein)}</td><td>${fmt(r.fat)}</td><td>${fmt(r.carbs)}</td><td><button class="row-delete" data-del-type="food" data-id="${r.id}">削除</button></td></tr>`).join(''):`<tr><td colspan="7" class="muted">今日の記録はありません</td></tr>`;renderPastFoodCopy();}
+
+
+  function renderPastFoodCopy(){
+    const select=$('pastFoodDate'),list=$('pastFoodList'),btn=$('copyPastDayBtn');
+    if(!select||!list||!btn)return;
+    const rows=[...mine(state.food)].filter(r=>r.date&&r.date!==today()).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const dates=[...new Set(rows.map(r=>r.date))];
+    const current=dates.includes(select.value)?select.value:(dates[0]||'');
+    select.innerHTML=dates.length?dates.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join(''):'<option value="">過去の食事なし</option>';
+    if(current)select.value=current;
+    btn.disabled=!current;
+    const dayRows=rows.filter(r=>r.date===current).sort((a,b)=>String(a.meal).localeCompare(String(b.meal),'ja'));
+    list.innerHTML=dayRows.length?dayRows.map(r=>`<div class="search-card"><div><strong>${esc(r.meal)}｜${esc(r.name)}</strong><small>${Math.round(num(r.kcal))}kcal / P${fmt(r.protein)} F${fmt(r.fat)} C${fmt(r.carbs)} / ${fmt(r.amount)}g</small></div><button class="ghost-btn" data-copy-food="${r.id}" type="button">入力欄へ</button></div>`).join(''):'<div class="helper">複製できる過去の食事はありません。</div>';
+  }
+
+  function copyFoodToForm(id){
+    const r=mine(state.food).find(x=>String(x.id)===String(id));
+    if(!r)return;
+    $('foodDate').value=today();
+    $('mealType').value=r.meal||'朝食';
+    $('foodName').value=r.name||'';
+    $('foodAmount').value=num(r.amount)||100;
+    $('foodKcal').value=round1(num(r.kcal));
+    $('foodProtein').value=round1(num(r.protein));
+    $('foodFat').value=round1(num(r.fat));
+    $('foodCarbs').value=round1(num(r.carbs));
+    $('foodNote').value=r.note||'';
+    currentPer100=null;
+    showToast('入力欄へ複製しました。内容を確認して保存してください');
+    $('foodName').scrollIntoView({behavior:'smooth',block:'center'});
+  }
+
+  async function copyPastDayToToday(){
+    const date=$('pastFoodDate')?.value;
+    if(!date)return;
+    const rows=mine(state.food).filter(r=>r.date===date);
+    if(!rows.length)return;
+    if(!confirm(`${date}の食事 ${rows.length}件を今日へ複製しますか？`))return;
+    try{
+      for(const r of rows){
+        await addFood({id:uid(),userId:currentUser?.id||'demo',date:today(),meal:r.meal,name:r.name,amount:num(r.amount)||100,kcal:num(r.kcal),protein:num(r.protein),fat:num(r.fat),carbs:num(r.carbs),note:r.note||'',source:'copied',barcode:r.barcode||''});
+      }
+      renderAll();
+      showToast(`${rows.length}件の食事を今日へ複製しました`);
+    }catch(e){showToast('食事の複製に失敗しました');}
+  }
 
   function updateBodyComputed(){const weight=num($('bodyWeight').value),fat=num($('bodyFat').value),height=num(state.profile.height);const fatMass=weight&&fat?weight*fat/100:0;const autoLean=weight?weight-fatMass:0;const bmi=weight&&height?weight/((height/100)**2):0;$('bodyFatMass').value=fatMass?round1(fatMass):'';if(!$('bodyLean').dataset.manual)$('bodyLean').value=autoLean?round1(autoLean):'';$('bodyBmi').value=bmi?round1(bmi):'';}
   function updateTrainingComputed(){const w=num($('trainingWeight').value),reps=num($('trainingReps').value);$('training1rm').value=(w&&reps)?round1(w*(1+reps/30)):'';renderTrainingSuggestionPreview();}
@@ -333,7 +379,7 @@
 
   function switchPage(page){if(!document.getElementById(`page-${page}`))return;document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page===page));$(`page-${page}`).classList.add('active');const names={dashboard:'ダッシュボード',body:'体組成',training:'トレーニング',analysis:'分析・PR',food:'食事',health:'消費カロリー',sharing:'夫婦共有',settings:'設定'};$('pageTitle').textContent=names[page]||'';if(location.hash!==`#${page}`)history.replaceState(null,'',`#${page}`);if(page==='dashboard')renderDashboard();if(page==='analysis')renderAnalysis();if(page==='health')renderHealth();if(page==='sharing')renderSharing();}
 
-  document.addEventListener('click',async e=>{const nav=e.target.closest('[data-page]');if(nav)switchPage(nav.dataset.page);const del=e.target.closest('[data-del-type]');if(del&&confirm('この記録を削除しますか？')){try{await removeRecord(del.dataset.delType,del.dataset.id);renderAll();showToast('削除しました');}catch{showToast('削除に失敗しました');}}const product=e.target.closest('[data-product]');if(product)selectProduct(Number(product.dataset.product));});
+  document.addEventListener('click',async e=>{const nav=e.target.closest('[data-page]');if(nav)switchPage(nav.dataset.page);const del=e.target.closest('[data-del-type]');if(del&&confirm('この記録を削除しますか？')){try{await removeRecord(del.dataset.delType,del.dataset.id);renderAll();showToast('削除しました');}catch{showToast('削除に失敗しました');}}const product=e.target.closest('[data-product]');if(product)selectProduct(Number(product.dataset.product));const copyFood=e.target.closest('[data-copy-food]');if(copyFood)copyFoodToForm(copyFood.dataset.copyFood);});
   $('demoStart').addEventListener('click',()=>{localLoad();state.profile.name=$('demoName').value.trim()||state.profile.name||'ユーザー';localSave();currentUser={id:'demo'};showApp();const target=location.hash.slice(1);if(target)switchPage(target);});
   $('loginTab').addEventListener('click',()=>{authMode='login';$('loginTab').classList.add('active');$('signupTab').classList.remove('active');$('authSubmit').textContent='ログイン';});
   $('signupTab').addEventListener('click',()=>{authMode='signup';$('signupTab').classList.add('active');$('loginTab').classList.remove('active');$('authSubmit').textContent='新規登録';});
@@ -350,6 +396,7 @@
   $('foodForm').addEventListener('submit',async e=>{e.preventDefault();const amount=num($('foodAmount').value)||100;const record={id:uid(),userId:currentUser?.id||'demo',date:$('foodDate').value,meal:$('mealType').value,name:$('foodName').value.trim(),amount,kcal:num($('foodKcal').value),protein:num($('foodProtein').value),fat:num($('foodFat').value),carbs:num($('foodCarbs').value),note:$('foodNote').value.trim(),source:currentPer100?'openfoodfacts':'manual',barcode:currentPer100?.barcode||$('barcodeInput').value.trim()};try{await addFood(record);renderAll();showToast('食事を保存しました');['foodName','foodKcal','foodProtein','foodFat','foodCarbs','foodNote','barcodeInput'].forEach(id=>$(id).value='');$('foodAmount').value=100;currentPer100=null;}catch{showToast('保存に失敗しました');}});
   $('healthForm').addEventListener('submit',async e=>{e.preventDefault();const record={id:uid(),userId:currentUser?.id||'demo',date:$('healthDate').value,steps:num($('healthSteps').value),resting:num($('healthResting').value),active:num($('healthActive').value),total:num($('healthTotal').value),source:'manual'};try{await addHealth(record);renderAll();showToast('消費データを保存しました');}catch{showToast('保存に失敗しました');}});
 
+  $('pastFoodDate').addEventListener('change',renderPastFoodCopy);$('copyPastDayBtn').addEventListener('click',copyPastDayToToday);
   $('foodSearchBtn').addEventListener('click',searchFoodProducts);$('foodSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchFoodProducts();}});$('foodAmount').addEventListener('input',recalcFoodFromPer100);$('barcodeLookupBtn').addEventListener('click',()=>lookupBarcode());$('scanBarcodeBtn').addEventListener('click',startBarcodeScanner);$('stopBarcodeBtn').addEventListener('click',stopBarcodeScanner);
   ['analysisExercise','analysisMetric','analysisRange'].forEach(id=>$(id).addEventListener('change',renderExerciseChart));
   $('connectPartnerBtn').addEventListener('click',connectPartner);$('saveSharingBtn').addEventListener('click',saveSharing);$('enablePushBtn').addEventListener('click',enablePush);
