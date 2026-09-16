@@ -78,6 +78,23 @@
     if (status) status.textContent = `${cgBase.grams}g基準から${grams}gへ換算しました。`;
   }
 
+  function clearPaste() {
+    const paste = $('chatgptNutritionPaste');
+    if (paste) {
+      paste.value = '';
+      paste.focus();
+    }
+    const status = $('chatgptNutritionStatus');
+    if (status) status.textContent = '貼り付け欄を空にしました。次の商品をそのまま貼り付けできます。';
+  }
+
+  function clearParsedFields() {
+    ['cgName','cgBasis','cgKcal','cgProtein','cgFat','cgCarbs','cgSource'].forEach(id => {
+      if ($(id)) $(id).value = '';
+    });
+    cgBase = null;
+  }
+
   function mount() {
     const anchor = $('foodSearchResults');
     if (!anchor || $('chatgptNutritionBox')) return;
@@ -94,7 +111,10 @@
       <details style="margin-top:10px" open>
         <summary>ChatGPTの結果を貼り付け</summary>
         <textarea id="chatgptNutritionPaste" rows="8" placeholder="ChatGPTで表示された7項目をまとめてコピーして、ここに貼り付け"></textarea>
-        <button id="parseChatgptNutrition" class="ghost-btn" type="button">項目ごとに分ける</button>
+        <div class="search-row" style="margin-top:8px">
+          <button id="parseChatgptNutrition" class="ghost-btn" type="button">項目ごとに分ける</button>
+          <button id="clearChatgptNutritionPaste" class="ghost-btn" type="button">貼り付け欄をクリア</button>
+        </div>
         <p id="chatgptNutritionStatus" class="helper"></p>
         <div class="form-grid" style="margin-top:10px">
           <label class="wide">商品名<input id="cgName" type="text"></label>
@@ -111,6 +131,7 @@
 
     $('openChatGptNutrition').addEventListener('click', openChatGPT);
     $('parseChatgptNutrition').addEventListener('click', parsePaste);
+    $('clearChatgptNutritionPaste').addEventListener('click', clearPaste);
     $('applyChatgptNutrition').addEventListener('click', apply);
     $('cgBasis').addEventListener('input', recalcCgNutrition);
 
@@ -142,6 +163,7 @@
   function parsePaste() {
     const text = val('chatgptNutritionPaste');
     if (!text) return;
+    clearParsedFields();
     const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
     const pick = patterns => {
       const line = lines.find(l => patterns.some(p => p.test(l)));
