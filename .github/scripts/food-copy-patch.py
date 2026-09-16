@@ -1,0 +1,101 @@
+from pathlib import Path
+import re
+
+index = Path('index.html')
+html = index.read_text()
+marker = '            <div id="foodSearchResults" class="search-results"></div>\n\n            <form id="foodForm" class="form-grid">'
+addition = '''            <div id="foodSearchResults" class="search-results"></div>
+
+            <div class="notice" id="pastFoodCopyPanel">
+              <strong>過去の食事から複製</strong>
+              <span>日付を選んで、1品だけ入力欄へコピーするか、その日の食事をまとめて今日へ複製できます。</span>
+              <div class="search-row" style="margin-top:10px">
+                <select id="pastFoodDate"></select>
+                <button id="copyPastDayBtn" class="ghost-btn" type="button">この日の食事を今日に複製</button>
+              </div>
+              <div id="pastFoodList" class="search-results"></div>
+            </div>
+
+            <form id="foodForm" class="form-grid">'''
+if marker not in html:
+    raise SystemExit('index marker not found')
+html = html.replace(marker, addition, 1)
+index.write_text(html)
+
+app = Path('app.js')
+js = app.read_text()
+old_render = '''  function renderFoodTable(){const rows=[...mine(state.food)].filter(r=>r.date===today()).sort((a,b)=>String(a.meal).localeCompare(String(b.meal),'ja'));const sum=rows.reduce((a,x)=>({k:a.k+num(x.kcal),p:a.p+num(x.protein),f:a.f+num(x.fat),c:a.c+num(x.carbs)}),{k:0,p:0,f:0,c:0});$('todayFoodSummary').textContent=`${Math.round(sum.k)} kcal / P${round1(sum.p)} F${round1(sum.f)} C${round1(sum.c)}`;$('foodTable').innerHTML=rows.length?rows.map(r=>`<tr><td>${esc(r.meal)}</td><td>${esc(r.name)}</td><td>${Math.round(num(r.kcal))}</td><td>${fmt(r.protein)}</td><td>${fmt(r.fat)}</td><td>${fmt(r.carbs)}</td><td><button class="row-delete" data-del-type="food" data-id="${r.id}">削除</button></td></tr>`).join(''):`<tr><td colspan="7" class="muted">今日の記録はありません</td></tr>`;}'''
+new_render = old_render[:-1] + 'renderPastFoodCopy();}'
+if old_render not in js:
+    raise SystemExit('renderFoodTable target not found')
+js = js.replace(old_render, new_render, 1)
+
+insert_before = '\n  function updateBodyComputed()'
+functions = r'''
+
+  function renderPastFoodCopy(){
+    const select=$('pastFoodDate'),list=$('pastFoodList'),btn=$('copyPastDayBtn');
+    if(!select||!list||!btn)return;
+    const rows=[...mine(state.food)].filter(r=>r.date&&r.date!==today()).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const dates=[...new Set(rows.map(r=>r.date))];
+    const current=dates.includes(select.value)?select.value:(dates[0]||'');
+    select.innerHTML=dates.length?dates.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join(''):'<option value="">過去の食事なし</option>';
+    if(current)select.value=current;
+    btn.disabled=!current;
+    const dayRows=rows.filter(r=>r.date===current).sort((a,b)=>String(a.meal).localeCompare(String(b.meal),'ja'));
+    list.innerHTML=dayRows.length?dayRows.map(r=>`<div class="search-card"><div><strong>${esc(r.meal)}｜${esc(r.name)}</strong><small>${Math.round(num(r.kcal))}kcal / P${fmt(r.protein)} F${fmt(r.fat)} C${fmt(r.carbs)} / ${fmt(r.amount)}g</small></div><button class="ghost-btn" data-copy-food="${r.id}" type="button">入力欄へ</button></div>`).join(''):'<div class="helper">複製できる過去の食事はありません。</div>';
+  }
+
+  function copyFoodToForm(id){
+    const r=mine(state.food).find(x=>String(x.id)===String(id));
+    if(!r)return;
+    $('foodDate').value=today();
+    $('mealType').value=r.meal||'朝食';
+    $('foodName').value=r.name||'';
+    $('foodAmount').value=num(r.amount)||100;
+    $('foodKcal').value=round1(num(r.kcal));
+    $('foodProtein').value=round1(num(r.protein));
+    $('foodFat').value=round1(num(r.fat));
+    $('foodCarbs').value=round1(num(r.carbs));
+    $('foodNote').value=r.note||'';
+    currentPer100=null;
+    showToast('入力欄へ複製しました。内容を確認して保存してください');
+    $('foodName').scrollIntoView({behavior:'smooth',block:'center'});
+  }
+
+  async function copyPastDayToToday(){
+    const date=$('pastFoodDate')?.value;
+    if(!date)return;
+    const rows=mine(state.food).filter(r=>r.date===date);
+    if(!rows.length)return;
+    if(!confirm(`${date}の食事 ${rows.length}件を今日へ複製しますか？`))return;
+    try{
+      for(const r of rows){
+        await addFood({id:uid(),userId:currentUser?.id||'demo',date:today(),meal:r.meal,name:r.name,amount:num(r.amount)||100,kcal:num(r.kcal),protein:num(r.protein),fat:num(r.fat),carbs:num(r.carbs),note:r.note||'',source:'copied',barcode:r.barcode||''});
+      }
+      renderAll();
+      showToast(`${rows.length}件の食事を今日へ複製しました`);
+    }catch(e){showToast('食事の複製に失敗しました');}
+  }
+'''
+if insert_before not in js:
+    raise SystemExit('function insertion marker not found')
+js = js.replace(insert_before, functions + insert_before, 1)
+
+old_click = "const product=e.target.closest('[data-product]');if(product)selectProduct(Number(product.dataset.product));});"
+new_click = "const product=e.target.closest('[data-product]');if(product)selectProduct(Number(product.dataset.product));const copyFood=e.target.closest('[data-copy-food]');if(copyFood)copyFoodToForm(copyFood.dataset.copyFood);});"
+if old_click not in js:
+    raise SystemExit('click handler marker not found')
+js = js.replace(old_click, new_click, 1)
+
+event_marker = "  $('foodSearchBtn').addEventListener('click',searchFoodProducts);"
+event_add = "  $('pastFoodDate').addEventListener('change',renderPastFoodCopy);$('copyPastDayBtn').addEventListener('click',copyPastDayToToday);\n" + event_marker
+if event_marker not in js:
+    raise SystemExit('event marker not found')
+js = js.replace(event_marker, event_add, 1)
+app.write_text(js)
+
+sw=Path('sw.js')
+s=sw.read_text()
+s=re.sub(r"const CACHE='training-manager-v(\d+)';",lambda m:f"const CACHE='training-manager-v{int(m.group(1))+1}';",s,count=1)
+sw.write_text(s)
