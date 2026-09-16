@@ -23,11 +23,69 @@ jobs:
           curl -fL "$BASE/app.js" -o app.js
           curl -fL "$BASE/icon-192.png" -o icon-192.png
           curl -fL "$BASE/icon-512.png" -o icon-512.png
+      - name: Patch Apple Health display
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          app = Path('app.js')
+          text = app.read_text()
+          new_render = r'''  function renderHealth(){
+    const balanceRows=dailyBalances();
+    const balanceMap=new Map(balanceRows.map(r=>[r.date,r]));
+    const todayB=balanceFor(today());
+    const ownHealth=[...mine(state.health)].filter(r=>r.date).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const todayH=healthFor(today());
+    const latestH=ownHealth[0]||null;
+    const cumulative=balanceRows.length?balanceRows[balanceRows.length-1].cumulative:0;
+    const apple=todayH||latestH;
+    const appleTotal=apple?(num(apple.total)||num(apple.resting)+num(apple.active)):0;
+    const appleSummary=todayH
+      ?`<div class="summary-card"><span>今日のApple Health<br><small>安静時 ${Math.round(num(todayH.resting)).toLocaleString()} kcal / アクティブ ${Math.round(num(todayH.active)).toLocaleString()} kcal</small></span><strong>${Math.round(num(todayH.steps)).toLocaleString()}歩<br><small>総消費 ${Math.round(appleTotal).toLocaleString()} kcal</small></strong></div>`
+      :latestH
+        ?`<div class="summary-card"><span>今日のApple Health<br><small>今日分は未取得 / 最新 ${esc(latestH.date)}<br>安静時 ${Math.round(num(latestH.resting)).toLocaleString()} kcal / アクティブ ${Math.round(num(latestH.active)).toLocaleString()} kcal</small></span><strong>${Math.round(num(latestH.steps)).toLocaleString()}歩<br><small>総消費 ${Math.round(appleTotal).toLocaleString()} kcal</small></strong></div>`
+        :`<div class="summary-card"><span>今日のApple Health</span><strong>未取得</strong></div>`;
+
+    $('balanceSummary').innerHTML=appleSummary+`<div class="summary-card"><span>本日のアンダーカロリー</span><strong>${todayB?`${Math.round(todayB.under).toLocaleString()} kcal`:'未計算'}</strong></div><div class="summary-card"><span>測定開始からの累積</span><strong>${balanceRows.length?`${Math.round(cumulative).toLocaleString()} kcal`:'未計算'}</strong></div><div class="summary-card"><span>算出済み日数</span><strong>${balanceRows.length}日</strong></div>`;
+
+    const table=$('healthTable').closest('table');
+    const head=table?.querySelector('thead tr');
+    if(head)head.innerHTML='<th>日付</th><th>歩数</th><th>摂取</th><th>消費</th><th>アンダー</th><th>累積</th><th></th>';
+
+    const start=state.profile.trackingStartDate||'0000-01-01';
+    const foodDates=mine(state.food).map(x=>x.date).filter(Boolean);
+    const historyDates=[...new Set([...ownHealth.map(h=>h.date),...foodDates])].filter(d=>d>=start&&d<=today()).sort((a,b)=>b.localeCompare(a));
+    $('healthTable').innerHTML=historyDates.length?historyDates.slice(0,90).map(date=>{
+      const h=healthFor(date);
+      const food=sumFood(date);
+      const b=balanceMap.get(date);
+      const expenditure=h?(num(h.total)||num(h.resting)+num(h.active)):(food.k>0?expenditureFor(date):0);
+      const under=b?`${b.under>=0?'+':''}${Math.round(b.under).toLocaleString()}`:'--';
+      const running=b?`${b.cumulative>=0?'+':''}${Math.round(b.cumulative).toLocaleString()}`:'--';
+      return `<tr><td>${esc(date)}</td><td>${h?Math.round(num(h.steps)).toLocaleString():'--'}</td><td>${food.k>0?Math.round(food.k).toLocaleString():'--'}</td><td>${expenditure>0?Math.round(expenditure).toLocaleString():'--'}</td><td class="${b?(b.under>=0?'balance-positive':'balance-negative'):''}">${under}</td><td>${running}</td><td>${h?`<button class="row-delete" data-del-type="health" data-id="${h.id}">消費削除</button>`:''}</td></tr>`;
+    }).join(''):`<tr><td colspan="7" class="muted">Apple Healthまたは食事データを登録すると表示されます</td></tr>`;
+
+    drawLineChart('balanceChart',balanceRows.map(r=>({x:r.date,y:Math.round(r.cumulative)})),'累積カロリー差','kcal');
+  }'''
+          pattern = r"  function renderHealth\(\)\{.*?\n\n  function renderSharing"
+          replacement = new_render + "\n\n  function renderSharing"
+          updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit('renderHealth block not found')
+          old_switch = "if(page==='dashboard')renderDashboard();if(page==='analysis')renderAnalysis();if(page==='health')renderHealth();if(page==='sharing')renderSharing();}"
+          new_switch = "if(page==='dashboard')renderDashboard();if(page==='analysis')renderAnalysis();if(page==='health'){renderHealth();if(hasSupabaseConfig&&currentUser){cloudLoad().then(()=>{renderHealth();renderDashboard();}).catch(()=>{});}}if(page==='sharing')renderSharing();}"
+          if old_switch not in updated:
+              raise SystemExit('switchPage target not found')
+          app.write_text(updated.replace(old_switch,new_switch,1))
+          PY
+      - name: Validate JavaScript
+        run: node --check app.js
       - name: Commit assets
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html app.js icon-192.png icon-512.png
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Bootstrap production assets"
+          git commit -m "Show Apple Health data without food logs"
           git push
